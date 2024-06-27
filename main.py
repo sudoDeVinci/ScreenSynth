@@ -10,7 +10,7 @@ from gc import collect
 FILE_NAME = const('sine_5s.wav')
 DEBUG = const(True)
 
-sampleRate = const(22050)  # 44.1 kHz - CD quality
+sampleRate = const(44100)  # 44.1 kHz - CD quality
 bitsPerSample = const(16)
 num_channels = const(1)  # 1 - MONO, 2 - STEREO
 duration = const(0.5)  # in seconds
@@ -18,8 +18,8 @@ bufferSize = const(1000)
 num_samples = duration * sampleRate
 
 recordSize = duration * sampleRate
-constant = const((2**16 - 1 // 2) + ((2**16 - 1) // 2))
-x = (2 * math.pi) / 8 # divide by an arbitrary number to create steps
+constant = const((2**15) - 1)
+frequency = (2 * math.pi) / sampleRate # divide by an arbitrary number to create steps
 
 
 
@@ -102,9 +102,9 @@ def generate_sine_wave():
         bytes: The amplitude of the sine wave at each step, represented as a 2-byte little-endian integer.
     """
     global recordSize
-    global x
+    global frequency
     for i in range(recordSize):
-        y = math.sin(i * x)
+        y = math.sin(i * frequency)
         amplitude = math.floor(constant * y)
         yield amplitude.to_bytes(2, 'little')
 
