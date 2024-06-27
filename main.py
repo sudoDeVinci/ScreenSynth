@@ -1,5 +1,5 @@
 from micropython import const
-from machine import Pin, ADC
+from machine import Pin, ADC, I2S
 import time
 import math  # for sine wave
 import ustruct
@@ -10,16 +10,16 @@ from gc import collect
 FILE_NAME = const('sine_5s.wav')
 DEBUG = const(True)
 
-sampleRate = const(44100)  # 44.1 kHz - CD quality
+sampleRate = const(22050)  # 44.1 kHz - CD quality
 bitsPerSample = const(16)
 num_channels = const(1)  # 1 - MONO, 2 - STEREO
-duration = const(0.25)  # in seconds
+duration = const(0.5)  # in seconds
 bufferSize = const(1000)
 num_samples = duration * sampleRate
 
 recordSize = duration * sampleRate
 constant = const((2**16 - 1 // 2) + ((2**16 - 1) // 2))
-x = (2 * math.pi) / 1000  # divide by an arbitrary number to create steps
+x = (2 * math.pi) / 8 # divide by an arbitrary number to create steps
 
 
 
@@ -142,4 +142,23 @@ def write_wav_file(file_name, sampleRate, bitsPerSample, num_channels, num_sampl
 sine_wave_generator = generate_sine_wave()
 for data in sine_wave_generator: pass
 #write_wav_file(FILE_NAME, sampleRate, bitsPerSample, num_channels, num_samples, sine_wave_generator, bufferSize)
-print("Done")
+
+
+# Initialize I2S
+i2s = I2S(
+    0,
+    sck=Pin(18),  # Serial Clock
+    ws=Pin(19),   # Word Select (LRCLK)
+    sd=Pin(20),   # Serial Data
+    mode=I2S.TX,
+    bits=bitsPerSample,
+    format=I2S.MONO,
+    rate=sampleRate,
+    ibuf=bufferSize
+)
+
+
+# Generate sine wave and write to I2S
+sine_wave_generator = generate_sine_wave()
+for data in sine_wave_generator:
+    i2s.write(data)
