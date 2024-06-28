@@ -32,7 +32,7 @@ def generate_sine_wave(voltage: float, frequency: float, duration_ms: int, sampl
     x = (2 * math.pi * frequency) / sample_rate
     buffer = bytearray()
     for i in range(num_samples):
-        amplitude = int(((constant * math.sin(i * x)) % 10000 + 1) * index)
+        amplitude = int((constant * math.sin(i * x)) * index)
         sample = int(amplitude * math.sin(2 * math.pi * frequency * i / sample_rate))
         buffer.extend(sample.to_bytes(2, 'little'))
     return buffer
