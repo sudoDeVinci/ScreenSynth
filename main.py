@@ -41,7 +41,7 @@ try:
         adc_value = pot.read_u16()
         volt = (3.3/65535)*adc_value
         #print(f"Voltage is: {volt:.2f} V")
-        NOTE_C = generate_sine_wave(volt, 261.63, 100)
+        NOTE_C = generate_sine_wave(volt, 261.63)
         for i in range(100): asyncio.run(send(audio_writer, NOTE_C))
 
 except KeyboardInterrupt:

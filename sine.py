@@ -12,13 +12,12 @@ frequency_C = 261.63  # Frequency for middle C (C4)
 frequency_E = 329.63  # Frequency for E4
 frequency_A = 440.00  # Frequency for A4
 
-def generate_sine_wave(voltage: float, frequency: float, duration_ms: int, sample_rate: int = sampleRate) -> Generator:
+def generate_sine_wave(voltage: float, frequency: float, sample_rate: int = sampleRate) -> Generator:
     """
     Generate a 16-bit sine wave array based on a voltage input.
 
     Args:
     - voltage (float): Voltage input (0.0 to 3.3V).
-    - duration_ms (int): Duration of the sine wave in milliseconds.
     - sample_rate (int): Sample rate of the output waveform. Default is 44100 Hz.
 
     Returns:
