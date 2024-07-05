@@ -3,7 +3,7 @@ from machine import Pin, ADC, I2S
 from time import sleep_ms
 import uasyncio as asyncio
 
-adcpin = 26
+adcpin = 1
 pot = ADC(adcpin)
 
 async def send(audio_writer, sine_wave: array) -> None:
@@ -13,9 +13,9 @@ async def send(audio_writer, sine_wave: array) -> None:
 # Initialize I2S
 i2s = I2S(
     0,
-    sck=Pin(18),  # Serial Clock
-    ws=Pin(19),   # Word Select (LRCLK)
-    sd=Pin(20),   # Serial Data
+    sck=Pin(42),  # Serial Clock
+    ws=Pin(2),   # Word Select (LRCLK)
+    sd=Pin(41),   # Serial Data
     mode=I2S.TX,
     bits=bitsPerSample,
     format=I2S.MONO,
@@ -39,6 +39,7 @@ try:
     audio_writer = asyncio.StreamWriter(i2s)
     while True: 
         adc_value = pot.read_u16()
+        print(adc_value)
         volt = (3.3/65535)*adc_value
         #print(f"Voltage is: {volt:.2f} V")
         NOTE_C = generate_sine_wave(volt, 261.63)
