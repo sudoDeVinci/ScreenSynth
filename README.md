@@ -13,5 +13,5 @@ There are a few differences in the models:
 
 ## LCD
 
-The LCD is driven by a Raspberry Pi Pico using a very ingenuitive [driver by HughMaingauche](https://github.com/HughMaingauche/PICO-VGA-Micropython).
+The LCD is driven by a Raspberry Pi Pico H using a very ingenuitive [driver by HughMaingauche](https://github.com/HughMaingauche/PICO-VGA-Micropython).
 
