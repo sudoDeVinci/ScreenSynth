@@ -369,10 +369,20 @@ def fill_disk(x:int, y:int, r:int , color:int):
         if x_pos > 0:
             break
 
+@micropython.viper
+def draw_checker():
+    # Drawing a simple 8 color checker
+    for h in range(8):
+        for i in range(0,60):
+            for k in range(8):
+                col=(h+k)%8
+                draw_fastHline(k*80,k*80+80,h*60+i,col)
+
+
 
 # Builfing the Data array buffer
 collect()
-a0=mem_free()
+a0 = mem_free()
 # Initiate the buffer - an array of consecutive 32bit words containing ALL the visible pixels
 H_buffer_line = array('L')
 # Number of required 32bit words
@@ -383,27 +393,17 @@ for k in range(visible_pix):
 # We need an array containing the adress of the buffer for the DMA chan0 to read the values
 H_buffer_line_address=array('L',[addressof(H_buffer_line)])
 # a few information on what we just built
-a1=mem_free()
-print("mem used by buffer array (kB):\t"+str(round((a0-a1)/1024,3)))
-print("Number of 32b words:\t\t"+str(visible_pix))
-print("Number of bits (total):\t\t"+str(32*visible_pix))
-print("Number of bits (usable):\t"+str(usable_bits*visible_pix))
-collect()
-a0=mem_free()
-print("\nremaining RAM (kB):\t"+str(round(a0/1024,3)))
+a1 = mem_free()
+print("mem used by buffer array (kB):\t"+str(round((a0-a1)/8024,3)))
+#print("Number of 32b words:\t\t"+str(visible_pix))
+#print("Number of bits (total):\t\t"+str(32*visible_pix))
+#print("Number of bits (usable):\t"+str(usable_bits*visible_pix))
+#collect()
+#a0=mem_free()
+#print("\nremaining RAM (kB):\t"+str(round(a0/8024,3)))
 
-
-# 3 bit color names
-RED     = const(0b001)
-GREEN   = const(0b010)
-BLUE    = const(0b100)
-YELLOW  = const(0b011)
-BLACK   = const(0)
-WHITE   = const(0b111)
-CYAN    = const(0b110)
-MAGENTA = const(0b101)
 
 # Configure the DMAs
 configure_DMAs(len(H_buffer_line),H_buffer_line_address)
 # Start the PIO Statemchines and the DMA Channels
-startsync()
+startsync() 
