@@ -1,10 +1,10 @@
-from machine import Pin
+from machine import Pin, DMA, mem32
 from rp2 import PIO, StateMachine, asm_pio
-from micropython import const
+from micropython import const, viper
 from array import array
 from uctypes import addressof
-from gc import mem_free,collect
-from math import cos,sin,pi,log
+from gc import mem_free, collect
+from math import cos, sin, pi, log
 
 # 640*480 resolution
 # Scanline part    Pixels    Time [µs]    32bits-Words
@@ -16,36 +16,37 @@ from math import cos,sin,pi,log
 
 
 # Possibility to change the system clock freq if needed - 125MHz (default/False) or 250MHz (True)
-OVCLK=True     
+OVCLK = True
 
-# Routine to boost system clock
-@micropython.viper
-def set_freq(fclock:int)->int:
-    #clock frequency to run the pico default 125MHz. Allow 100-250
-    if (fclock<100000000 or fclock>250000000):
-        print("invalid clock speed",fclock)
+
+@viper
+def set_freq(fclock: int) -> int:
+    # clock frequency to run the pico default 125MHz. Allow 100-250
+    if (fclock < 100000000 or fclock > 250000000):
+        print("invalid clock speed", fclock)
         print("Clock speed must be set between 100MHz and 250MHz")
         return
-    if fclock<=130000000:
-        FBDIV=fclock//1000000
-        POSTDIV1=6  #default 6
-        POSTDIV2=2  #default 2
+    if fclock <= 130000000:
+        FBDIV = fclock//1000000
+        POSTDIV1 = 6  # default 6
+        POSTDIV2 = 2  # default 2
     else: 
-        FBDIV=fclock//2000000
-        POSTDIV1=3  #default 6
-        POSTDIV2=2  #default 2
-    ptr32(0x4002800c)[0] = (POSTDIV1<<16)|(POSTDIV2<<12)
+        FBDIV = fclock//2000000
+        POSTDIV1 = 3  # default 6
+        POSTDIV2 = 2  # default 2
+    ptr32(0x4002800c)[0] = (POSTDIV1<<16) | (POSTDIV2<<12)
     ptr32(0x40028008)[0] = FBDIV
-    cs=FBDIV*12//(POSTDIV1*POSTDIV2)
-    print('clock speed',cs,'MHz')
+    cs = FBDIV*12//(POSTDIV1*POSTDIV2)
+    print('clock speed', cs, 'MHz')
+
 
 # VGA parameters for 640x480 using 3b per pixel
-H_res=const(640)             # Horizontal resolution in pixels
-V_res=const(480)             # Vertical resolution in pixels
-bit_per_pix=const(3)         # Bits per pixel
-pixel_bitmask=const(0b111)   # Corresponding bitmask (used for replacing one 3bit pixel in a 32b word)
-usable_bits=const(30)        # Numbers of bits that will be used in each 32b word
-pix_per_words=const(10)     # Number of 3b pixel per 32b word
+H_res = const(640)             # Horizontal resolution in pixels
+V_res = const(480)             # Vertical resolution in pixels
+bit_per_pix = const(3)         # Bits per pixel
+pixel_bitmask = const(0b111)   # Corresponding bitmask (used for replacing one 3bit pixel in a 32b word)
+usable_bits = const(30)        # Numbers of bits that will be used in each 32b word
+pix_per_words = const(10)     # Number of 3b pixel per 32b word
 
 # Initiate cursor position (for character drawing only)
 x_cursor = 0
@@ -53,17 +54,18 @@ y_cursor = 0
 
 # Choose frequency parameters
 if OVCLK:
-    set_freq(250000000)# To use this Freq you'll have to modify the RGB PIO SM -> see comments in SM2 RGB PIO script
-    SM0_FREQ=12587500  # Horizontal sync SM - For use with overclocked 250 MHz system clock
-    SM2_FREQ=113287500 # RGB signal output - For use with overclocked 250 MHz system clock
+    set_freq(250000000)  # To use this Freq you'll have to modify the RGB PIO SM -> see comments in SM2 RGB PIO script
+    SM0_FREQ = 12587500   # Horizontal sync SM - For use with overclocked 250 MHz system clock
+    SM2_FREQ = 113287500  # RGB signal output - For use with overclocked 250 MHz system clock
 else:
-    SM0_FREQ=25175000 # Horizontal sync SM - For use with standard 125 MHz system clock
-    SM2_FREQ=100700000 # Horizontal sync SM - For use with standard 125 MHz system clock
+    SM0_FREQ = 25175000  # Horizontal sync SM - For use with standard 125 MHz system clock
+    SM2_FREQ = 100700000  # Horizontal sync SM - For use with standard 125 MHz system clock
 
-SM1_FREQ = const(125000000) # Vertical sync SM - Max freq (driven by SM0 IRQ)
+SM1_FREQ = const(125000000)  # Vertical sync SM - Max freq (driven by SM0 IRQ)
 
-#statemachine configuration
-#sm0 is used for H sync signal
+
+# statemachine configuration
+# sm0 is used for H sync signal
 @asm_pio(set_init=PIO.OUT_HIGH, autopull=True, pull_thresh=32)
 def paral_Hsync():
     wrap_target()
@@ -80,7 +82,8 @@ def paral_Hsync():
     set(pins, 1) [13]    # High for back porch (32 cycles)
     irq(0)               # Set IRQ to signal end of line (47 cycles)
     wrap()
-#     
+
+   
 paral_write_Hsync = StateMachine(0, paral_Hsync,freq=SM0_FREQ, set_base=Pin(4))
 # #
 # #sm1 is used for V sync signal
@@ -127,11 +130,11 @@ def paral_RGB():
     nop()                      [1]   #  Uncomment these 3 lines if using 250MHz system clock
     nop()                      [1]   #
     jmp(x_dec,"colorout")       # Stay here thru horizontal active mode
-    wrap()                   
-    
+    wrap()     
+
 paral_write_RGB = StateMachine(2, paral_RGB,freq=SM2_FREQ, out_base=Pin(0),sideset_base=Pin(0))
 
-@micropython.viper
+@viper
 def configure_DMAs(nword:int, H_buffer_line_add:ptr32):
     # RGB DMAs
     # Using chan0 as "configure" DMA and chan1 as "Data transfer" DMA
@@ -170,7 +173,7 @@ def configure_DMAs(nword:int, H_buffer_line_add:ptr32):
     ptr32(0x50000010)[0] = DMA_control_word              # DMA Channel 0 Control and Status (using alias to not start immediatly - will be started by DMA trigger register)
     collect()
 
-@micropython.viper
+@viper
 def startsync():
     V=int(ptr16(V_res))
     H=int(ptr16(H_res))
@@ -181,18 +184,17 @@ def startsync():
     ptr32(0x50200000)[0] |= 0b111    # Enable PIO0 SM 0, 1, and 2
     collect()
 
-    
-#     
-@micropython.viper
+
+@viper
 def stopsync():
     ptr32(0x50000444)[0] |= 0b000011         # Aborts DMA chan0 and 1
     ptr32(0x50200000)[0] &= 0b111111111000   # Disable PIO0 SM 0, 1 and2
-    
 
-@micropython.viper
+
+@viper
 def draw_pix(x:int,y:int,col:int):
     global H_buffer_line
-    
+
     Data=ptr32(H_buffer_line)
     n=int((y)*(int(H_res)*int(bit_per_pix))+ (x)*int(bit_per_pix))
     k=(n//int(usable_bits)-1) if (n//int(usable_bits)>0)  else (int(len(H_buffer_line))-1)
@@ -200,23 +202,24 @@ def draw_pix(x:int,y:int,col:int):
     mask= ((int(pixel_bitmask) << p)^0x3FFFFFFF)
     Data[k]=(Data[k] & mask) | (col << p)
 
-@micropython.viper
+
+@viper
 def fill_screen(col:int):
     global H_buffer_line
-    
+
     Data=ptr32(H_buffer_line)
     mask=0
     for i in range(0,int(pix_per_words)):
         mask|=col<<(int(bit_per_pix)*i)
-        
+
     for i in range(0,int(len(H_buffer_line))):
         Data[i]=mask 
-    
 
-@micropython.viper
+
+@viper
 def draw_fastHline(x1:int,x2:int,y:int,col:int):
     global H_buffer_line
-    
+
     if (x1<0):x1=0
     if (x1>(int(H_res)-1)):x1=(int(H_res)-1)
     if (x2<0):x2=0
@@ -260,11 +263,11 @@ def draw_fastHline(x1:int,x2:int,y:int,col:int):
     while i < k2:
         Data[i]=mask
         i+=1
-    
-@micropython.viper
+
+@viper
 def draw_fastVline(x:int,y1:int,y2:int,col:int):
     global H_buffer_line
-    
+
     if (x<0):x=0
     if (x>(int(H_res)-1)):x=(int(H_res)-1)
     if (y1<0):y1=0
@@ -283,7 +286,7 @@ def draw_fastVline(x:int,y1:int,y2:int,col:int):
     mask= ((int(pixel_bitmask) << p1)^0x3FFFFFFF)
     for i in range(y2-y1):
         Data[k1+i*nword]=(Data[k1+i*nword] & mask) | (col << p1)
-        
+
 
 def draw_line(x1,y1,x2,y2,col):
     if (x1<0):x1=-1
@@ -304,14 +307,14 @@ def draw_line(x1,y1,x2,y2,col):
         draw_pix(x,int(x*a+b),col)
         x+=1
         
-@micropython.viper
+@viper
 def fill_rect(x1:int,y1:int,x2:int,y2:int,col:int):
     j=int(min(y1,y2))
     while (j<int(max(y1,y2))):
         draw_fastHline(x1,x2,j,col)
         j+=1
 
-@micropython.viper
+@viper
 def draw_rect(x1:int,y1:int,x2:int,y2:int,col:int):
     draw_fastHline(x1,x2,y1,col)
     draw_fastHline(x1,x2,y2,col)
@@ -319,7 +322,7 @@ def draw_rect(x1:int,y1:int,x2:int,y2:int,col:int):
     draw_fastVline(x2,y1,y2,col)
     collect()
 
-@micropython.viper
+@viper
 def draw_circle(x:int, y:int, r:int , color:int):
     if (x < 0 or y < 0 or x >= int(H_res) or y >= int(V_res)):
         return
@@ -343,10 +346,10 @@ def draw_circle(x:int, y:int, r:int , color:int):
             err += x_pos * 2 + 1
         if x_pos > 0:
             break
-    
-    collect()  
 
-@micropython.viper
+    collect() 
+
+@viper
 def fill_disk(x:int, y:int, r:int , color:int):
     if (x < 0 or y < 0 or x >= int(H_res) or y >= int(V_res)):
         return
@@ -369,14 +372,15 @@ def fill_disk(x:int, y:int, r:int , color:int):
         if x_pos > 0:
             break
 
-@micropython.viper
+
+@viper
 def draw_checker():
     # Drawing a simple 8 color checker
     for h in range(8):
-        for i in range(0,60):
+        for i in range(0, 60):
             for k in range(8):
-                col=(h+k)%8
-                draw_fastHline(k*80,k*80+80,h*60+i,col)
+                col = (h + k) % 8
+                draw_fastHline(k * 80, k * 80 + 80, h * 60 + i, col)
 
 
 
