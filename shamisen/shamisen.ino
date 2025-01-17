@@ -25,14 +25,12 @@
 #define STRING_PIN_SAN 6
 #define VOLUME_PIN 7
 
+// Queues to hold frequencies.
+QueueHandle_t soundQueue;
+QueueHandle_t strumQueue;
+
 // Volume value changed with softpot slider.
 uint16_t volume = 8000;
-
-// Queues to hold frequencies.
-QueueHandle_t ichiQueue;
-QueueHandle_t niQueue;
-QueueHandle_t sanQueue;
-QueueHandle_t volumeQueue;
 
 /**
  * Producer task for audio pipeline.
@@ -43,7 +41,7 @@ void readStrings(void * parameters);
 
 /**
  * Consumer task for audio pipeline.
- * Attach audio pins to pwm outputs, and play sounds from the queue w/ given volume.\
+ * Attach audio pins to pwm outputs, and play sounds from the queue w/ given volume.
  * @param parameters: Nothing - We don't actually pass anything in here.
  */
 void playAudio(void * parameters);
@@ -60,13 +58,13 @@ void setup() {
   // Configure ADC resolution
   analogReadResolution(RESOLUTION);
   
-  // Create Queues to hold frequency values
-  ichiQueue = xQueueCreate(10, sizeof(uint16_t));
-  niQueue = xQueueCreate(10, sizeof(uint16_t));
-  sanQueue = xQueueCreate(10, sizeof(uint16_t));
-  volumeQueue = xQueueCreate(10, sizeof(uint16_t));
+  // Queue to hold 3 frequency values and volume.
+  soundQueue = xQueueCreate(10, (sizeof(uint16_t)*4));
+
+  // Queue to hold whether or not we actuall play the sound.
+  strumQueue = xQueueCreate(10, (sizeof(bool)));
   
-  // Create tasks
+  // Consumer and producer tasks.
   xTaskCreate(
       readStrings,   // Function to implement the task
       "ReadStringsTask", // Name of the task
@@ -88,67 +86,112 @@ void setup() {
 
 
 void readStrings(void * parameters) {
+  uint16_t soundData[4];
+
+  bool strum = true;
+
   while (true) {
-    uint16_t ichiFreq = ichi.freq();
-    uint16_t niFreq = ni.freq();
-    uint16_t sanFreq = san.freq();
-    uint16_t volumeFreq = volumeSlider.freq(); 
+    soundData[0] = ichi.freq();
+    soundData[1] = ni.freq();
+    soundData[2] = san.freq();
+    soundData[3] = volumeSlider.freq(); 
 
+    // We read from touch sensor here but for testing just say it's true.
+    // TODO: Read from touch sensor.
+    strum = true;
 
-    xQueueSend(ichiQueue, &ichiFreq, portMAX_DELAY);
-    xQueueSend(niQueue, &niFreq, portMAX_DELAY);
-    xQueueSend(sanQueue, &sanFreq, portMAX_DELAY);
-    xQueueSend(volumeQueue, &volumeFreq, portMAX_DELAY);
+    xQueueSend(soundQueue, &soundData, portMAX_DELAY);
+    xQueueSend(strumQueue, &strum, portMAX_DELAY);
 
     delay(10);
   }
 }
 
-void playAudio(void * parameters) {
-  /*
-   * We attach a dedicated pwm channel to each "string", outputting to our audio pins.
-   * There are 8 channels, 0-7. It's good to have some space between channels used - 
-   * - in my experience, so we take every 3rd channel.
-   */
+void detachSound() {
+  ledcDetach(AUDIO_PIN_LEFT);
+  ledcDetach(AUDIO_PIN_MIDDLE);
+  ledcDetach(AUDIO_PIN_RIGHT);
+}
+
+
+/*
+  * Attach a dedicated pwm channel to each "string", outputting to our audio pins.
+  * There are 8 channels, 0-7. It's good to have some space between channels used - 
+  * - in my experience, so we take every 3rd channel.
+  */
+void attachSound() {
   ledcAttachChannel(AUDIO_PIN_LEFT, volume, RESOLUTION, 0);
   ledcAttachChannel(AUDIO_PIN_MIDDLE, volume, RESOLUTION, 3);
   ledcAttachChannel(AUDIO_PIN_RIGHT, volume, RESOLUTION, 6);
-  bool attached = true;
+}
 
-  // Frequency buffers
-  uint16_t ichiFreq;
-  uint16_t niFreq;
-  uint16_t sanFreq;
-  uint16_t volumeFeq;
 
-  /*
-   * Technically we don't exactly need these - but they give us slightly smoother audio.
-   * These are the last successful sound made by the strings (the queue returns 'pdPASS').
-   *
-   * We fetch the sounds in bulk, and play them one after the other.
-   * Fetching then playing each within their own if statement makes the audio hitch slightly. 
-   */
-  uint16_t lastIchiFreq = 0;
-  uint16_t lastNiFreq = 0;
-  uint16_t lastSanFreq = 0;
-  uint16_t lastVolumeFreq = 0;
+/**
+ * Set the audio output to the current global volume.
+ */
+void setVolume() {
+  detachSound();
+  attachSound();
+}
 
-  /**
-  * We use this to tell that a string is being touched.
-  */
+void playAudio(void * parameters) {
+
   uint8_t threshold = 50;
+  uint16_t soundDataBuffer[4];
+
+  bool strumBuffer = true;
+  bool strumBufferState[2] = {true, true};
+  constexpr uint8_t strumStateMask[4] = {
+    0b00,  // both off
+    0b11,  // both on
+    0b01,  // off->on
+    0b10   // on->off
+  };
+
+  attachSound();
 
   while(true) {
-    // Update last known frequency 
-    if (xQueueReceive(ichiQueue, &ichiFreq, 0) == pdPASS) lastIchiFreq = ichiFreq;
-    if (xQueueReceive(niQueue, &niFreq, 0) == pdPASS) lastNiFreq = niFreq;
-    if (xQueueReceive(sanQueue, &sanFreq, 0) == pdPASS) lastSanFreq = sanFreq;
 
-    ledcWriteTone(AUDIO_PIN_LEFT, lastIchiFreq);
-    ledcWriteTone(AUDIO_PIN_MIDDLE, lastNiFreq);
-    ledcWriteTone(AUDIO_PIN_RIGHT, lastSanFreq);
+    /**
+     * Read the current state of whether we strum or not.
+     * We define transitions between sound being turned on or off using this
+     * boolean mask.
+     */
+    if (xQueueReceive(strumQueue, &strumBuffer, 0) == pdPASS) {
+      strumBufferState[1] = strumBuffer;
 
-    Serial.println(lastSanFreq);
+      uint8_t transition = (strumBufferState[0] << 1) | strumBuffer;
+
+      switch (transition) {
+        
+        case strumStateMask[2]:
+          attachSound();
+          break;
+
+        case strumStateMask[3]:
+          detachSound();
+          break;
+
+        case strumStateMask[0]:
+        case strumStateMask[1]:
+        default:
+          break;
+      }
+
+      strumBufferState[0] = strumBuffer;
+    }
+
+    if (xQueueReceive(soundQueue, &soundDataBuffer, 0) == pdPASS) {
+      if (soundDataBuffer[3] != volume) {
+        volume = soundDataBuffer[3];
+        setVolume();
+        Serial.println(volume);
+      }
+
+        ledcWriteTone(AUDIO_PIN_LEFT, soundDataBuffer[0]);
+        ledcWriteTone(AUDIO_PIN_MIDDLE, soundDataBuffer[1]);
+        ledcWriteTone(AUDIO_PIN_RIGHT, soundDataBuffer[2]);
+    }
 
     delay(5);
   }

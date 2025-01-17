@@ -14,7 +14,7 @@ struct SoftPot {
   SoftPot (uint16_t low_note,
            uint16_t high_note,
            uint8_t pin,
-           uint8_t thresh=10
+           uint8_t thresh=0
           ) {
     this -> LOW_NOTE = low_note;
     this -> HIGH_NOTE = high_note;
