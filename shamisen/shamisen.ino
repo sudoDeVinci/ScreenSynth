@@ -1,16 +1,6 @@
 #include "pitches.h"
 #include "softpot.h"
 
-/**
- * This program acts as a synthesizer, allowing the user to play tones from the ESP32S3 as you would a Shamisen.
- * This is inspired by the CRT instruments created by the band Electronicos Fantasticos - specifically the Telesen.
- * The "strings" are expected to be softpots, though technically any potentiometer can work.
- * 
- * Tones and volume are read into a queue for each string in one process, and are outputted as pwm signals
- * on pins pinned to individual pwm chanels. While this doesn't give the best audio quality, we only need a 
- * consistent tone output. 
- */
-
 // 12 bit precision for the output frequency
 #define RESOLUTION 12
 
